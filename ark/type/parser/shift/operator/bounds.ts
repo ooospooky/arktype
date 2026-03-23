@@ -1,12 +1,17 @@
 import {
 	$ark,
+	isSizeLiteralString,
 	writeUnboundableMessage,
 	type BaseRoot,
 	type BoundKind,
 	type NodeSchema
 } from "@ark/schema"
 import { isKeyOf, throwParseError, type KeySet, type Scanner } from "@ark/util"
-import type { DateLiteral } from "../../../attributes.ts"
+import type {
+	DateLiteral,
+	LimitLiteral,
+	SizeLiteral
+} from "../../../attributes.ts"
 import type { InferredAst } from "../../ast/infer.ts"
 import type { astToString } from "../../ast/utils.ts"
 import type { RootedRuntimeState, RuntimeState } from "../../reduce/dynamic.ts"
@@ -22,6 +27,9 @@ import {
 import type { s, StaticState } from "../../reduce/static.ts"
 import { extractDateLiteralSource, isDateLiteral } from "../operand/date.ts"
 import type { parseOperand } from "../operand/operand.ts"
+
+const isSizeLiteral = (value: unknown): value is SizeLiteral =>
+	isSizeLiteralString(value)
 
 export const parseBound = (
 	s: RootedRuntimeState,
@@ -39,6 +47,11 @@ export const parseBound = (
 				`d'${s.root.description ?? s.root.unit.toISOString()}'` as const
 			s.unsetRoot()
 			s.reduceLeftBound(literal, comparator)
+			return
+		}
+		if (isSizeLiteral(s.root.unit)) {
+			s.reduceLeftBound(s.root.unit, comparator)
+			s.unsetRoot()
 			return
 		}
 	}
@@ -60,10 +73,7 @@ export type parseBound<
 			>
 		) ?
 			s["root"] extends (
-				InferredAst<
-					Date | number,
-					`${infer limit extends number | DateLiteral}`
-				>
+				InferredAst<Date | number, `${infer limit extends LimitLiteral}`>
 			) ?
 				s.reduceLeftBound<s, limit, comparator, nextUnscanned>
 			:	parseRightBound<s.scanTo<s, nextUnscanned>, comparator, $, args>
@@ -103,7 +113,7 @@ export const writeIncompatibleRangeMessage = (
 
 export const getBoundKinds = (
 	comparator: Comparator,
-	limit: number | DateLiteral,
+	limit: LimitLiteral,
 	root: BaseRoot,
 	boundKind: BoundExpressionKind
 ): BoundKind[] => {
@@ -140,6 +150,18 @@ export const getBoundKinds = (
 			: ["before"]
 		)
 	}
+	if (root.extends($ark.intrinsic.File)) {
+		if (typeof limit !== "number" && !isSizeLiteral(limit)) {
+			return throwParseError(
+				writeInvalidLimitMessage(comparator, limit, boundKind)
+			)
+		}
+		return (
+			comparator === "==" ? ["minSize", "maxSize"]
+			: comparator[0] === ">" ? ["minSize"]
+			: ["maxSize"]
+		)
+	}
 	return throwParseError(writeUnboundableMessage(root.expression))
 }
 
@@ -171,7 +193,9 @@ export const parseRightBound = (
 	s.root = previousRoot
 	if (
 		!limitNode.hasKind("unit") ||
-		(typeof limitNode.unit !== "number" && !(limitNode.unit instanceof Date))
+		(typeof limitNode.unit !== "number" &&
+			!isSizeLiteral(limitNode.unit) &&
+			!(limitNode.unit instanceof Date))
 	)
 		return s.error(writeInvalidLimitMessage(comparator, limitToken, "right"))
 
@@ -181,7 +205,7 @@ export const parseRightBound = (
 
 	const boundKinds = getBoundKinds(
 		comparator,
-		typeof limit === "number" ? limit : (limitToken as DateLiteral),
+		limit instanceof Date ? (limitToken as DateLiteral) : limit,
 		previousRoot,
 		"right"
 	)
@@ -217,7 +241,7 @@ export type parseRightBound<
 > =
 	parseOperand<s, $, args> extends infer nextState extends StaticState ?
 		nextState["root"] extends (
-			InferredAst<unknown, `${infer limit extends number | DateLiteral}`>
+			InferredAst<unknown, `${infer limit extends LimitLiteral}`>
 		) ?
 			s["branches"]["leftBound"] extends {} ?
 				comparator extends MaxComparator ?

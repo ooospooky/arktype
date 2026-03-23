@@ -28,7 +28,9 @@ export type DateLiteral<source extends string = string> =
 	| `d"${source}"`
 	| `d'${source}'`
 
-export type LimitLiteral = number | DateLiteral
+export type SizeLiteral = `${number}${"B" | "KB" | "MB" | "GB" | "TB"}`
+
+export type LimitLiteral = number | DateLiteral | SizeLiteral
 
 export type normalizeLimit<limit> =
 	limit extends DateLiteral<infer source> ? source

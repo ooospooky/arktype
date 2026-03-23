@@ -32,6 +32,9 @@ export type validateBound<
 		: [bounded] extends [Date] ?
 			// allow numeric or date literal as a Date limit
 			validateAst<boundedAst, $, args>
+		: [bounded] extends [File] ?
+			// allow numeric or size literal as a File limit
+			validateAst<boundedAst, $, args>
 		: [bounded] extends [InferredMorph] ?
 			ErrorMessage<writeConstrainedMorphMessage<boundedAst>>
 		:	ErrorMessage<writeUnboundableMessage<typeToString<bounded>>>
