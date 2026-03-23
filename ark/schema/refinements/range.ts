@@ -39,6 +39,7 @@ export abstract class BaseRange<
 	readonly compiledActual: string =
 		this.boundOperandKind === "value" ? `data`
 		: this.boundOperandKind === "length" ? `data.length`
+		: this.boundOperandKind === "size" ? `data.size`
 		: `data.valueOf()`
 	readonly comparator: RelativeComparator = compileComparator(
 		this.kind,
@@ -166,19 +167,22 @@ const negatedComparators = {
 export const boundKindPairsByLower: BoundKindPairsByLower = {
 	min: "max",
 	minLength: "maxLength",
-	after: "before"
+	after: "before",
+	minSize: "maxSize"
 }
 
 type BoundKindPairsByLower = {
 	min: "max"
 	minLength: "maxLength"
 	after: "before"
+	minSize: "maxSize"
 }
 
 type BoundKindPairsByUpper = {
 	max: "min"
 	maxLength: "minLength"
 	before: "after"
+	maxSize: "minSize"
 }
 
 export type pairedRangeKind<kind extends RangeKind> =
@@ -198,7 +202,7 @@ export type NumericallyBoundable = string | number | array
 export type Boundable = NumericallyBoundable | Date
 
 export const parseExclusiveKey: keySchemaDefinitions<
-	Declaration<"min" | "max">
+	Declaration<"min" | "max" | "minSize" | "maxSize">
 >["exclusive"] = {
 	// omit key with value false since it is the default
 	parse: (flag: boolean) => flag || undefined
@@ -276,6 +280,8 @@ type OperandKindsByBoundKind = satisfy<
 		maxLength: "length"
 		after: "date"
 		before: "date"
+		minSize: "size"
+		maxSize: "size"
 	}
 >
 
@@ -285,7 +291,9 @@ const operandKindsByBoundKind: OperandKindsByBoundKind = {
 	minLength: "length",
 	maxLength: "length",
 	after: "date",
-	before: "date"
+	before: "date",
+	minSize: "size",
+	maxSize: "size"
 } as const
 
 export const compileComparator = (
@@ -296,7 +304,7 @@ export const compileComparator = (
 		exclusive ? "" : "="
 	}` as const
 
-export type BoundOperandKind = "value" | "length" | "date"
+export type BoundOperandKind = "value" | "length" | "date" | "size"
 
 export type LengthBoundableData = string | array
 
@@ -308,7 +316,48 @@ export const dateLimitToString = (limit: LimitSchemaValue): string =>
 export const writeUnboundableMessage = <root extends string>(
 	root: root
 ): writeUnboundableMessage<root> =>
-	`Bounded expression ${root} must be exactly one of number, string, Array, or Date`
+	`Bounded expression ${root} must be exactly one of number, string, Array, Date, or File`
 
 export type writeUnboundableMessage<root extends string> =
-	`Bounded expression ${root} must be exactly one of number, string, Array, or Date`
+	`Bounded expression ${root} must be exactly one of number, string, Array, Date, or File`
+
+export interface ParsedSize {
+	readonly bytes: number
+	readonly unit: string
+	readonly originalValue: number
+}
+
+const SI_UNITS = {
+	B: 1,
+	KB: 1000,
+	MB: 1000000,
+	GB: 1000000000,
+	TB: 1000000000000
+} as const
+
+export const SIZE_LITERAL_REGEX = /^(\d+(?:\.\d+)?)(B|KB|MB|GB|TB)$/
+
+export const isSizeLiteralString = (value: unknown): boolean =>
+	typeof value === "string" && SIZE_LITERAL_REGEX.test(value)
+
+const isSizeUnit = (unit: string): unit is keyof typeof SI_UNITS =>
+	unit in SI_UNITS
+
+export const parseSizeLiteral = (literal: number | string): ParsedSize => {
+	if (typeof literal === "number")
+		return { bytes: literal, unit: "B", originalValue: literal }
+
+	const match = SIZE_LITERAL_REGEX.exec(literal)
+	if (!match) throwParseError(`Invalid size literal: ${literal}`)
+
+	const value = Number(match[1])
+	const unit = match[2]
+
+	if (!isSizeUnit(unit)) throwParseError(`Invalid size unit: ${unit}`)
+
+	return {
+		bytes: value * SI_UNITS[unit],
+		unit,
+		originalValue: value
+	}
+}

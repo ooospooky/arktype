@@ -19,6 +19,11 @@ const dateCases = flatMorph(numericCases, (name, v) => [name, new Date(v)])
 
 const lengthCases = flatMorph(numericCases, (name, v) => [name, "1".repeat(v)])
 
+const fileCases = flatMorph(numericCases, (name, v) => [
+	name,
+	new File(["x".repeat(v)], "test.txt")
+])
+
 contextualize(() => {
 	it("numeric apply", () => {
 		const T = rootSchema({
@@ -86,6 +91,14 @@ contextualize(() => {
 		)
 	})
 
+	it("file apply", () => {
+		const T = rootSchema({
+			proto: File,
+			minSize: { rule: 5, exclusive: true },
+			maxSize: { rule: 10 }
+		})
+	})
+
 	it("errors on negative length bound", () => {
 		attest(() => rootSchema({ domain: "string", maxLength: -1 })).throws(
 			writeInvalidLengthBoundMessage("maxLength", -1)
@@ -108,10 +121,12 @@ contextualize(() => {
 			const basis =
 				min === "min" ? { domain: "number" }
 				: min === "minLength" ? { domain: "string" }
+				: min === "minSize" ? { proto: File }
 				: { proto: Date }
 			const cases =
 				min === "min" ? numericCases
 				: min === "minLength" ? lengthCases
+				: min === "minSize" ? fileCases
 				: dateCases
 
 			it("allows", () => {
@@ -150,6 +165,12 @@ contextualize(() => {
 						rootSchema({
 							...basis,
 							exactLength: 6
+						} as never)
+					: min === "minSize" ?
+						rootSchema({
+							...basis,
+							minSize: { rule: 6 },
+							maxSize: { rule: 6 }
 						} as never)
 					:	rootSchema({
 							unit: new Date(6)

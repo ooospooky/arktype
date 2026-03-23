@@ -18,7 +18,8 @@ const intrinsicBases = schemaScope(
 		unknown: {},
 		undefined: { unit: undefined },
 		Array,
-		Date
+		Date,
+		File
 	},
 	{ prereducedAliases: true }
 ).export()
